@@ -1,0 +1,251 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum BusinessType {
+  RETAIL
+  SERVICE
+  MANUFACTURING
+  B2B
+  HOSPITALITY
+}
+
+enum BusinessRole {
+  OWNER
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+enum ImportFileType {
+  CSV
+  XLSX
+}
+
+enum ImportStatus {
+  UPLOADED
+  PREVIEWED
+  VALIDATING
+  VALIDATED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+  PENDING
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  BANK_TRANSFER
+  OTHER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  phoneNumber  String   @unique
+  passwordHash String
+
+  memberships  BusinessMember[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Business {
+  id           String       @id @default(uuid())
+  name         String
+  businessType BusinessType
+  currency     String       @default("INR")
+  timezone     String       @default("Asia/Kolkata")
+
+  members      BusinessMember[]
+  customers    Customer[]
+  categories   Category[]
+  products     Product[]
+  sales        Sale[]
+  expenses     Expense[]
+  imports      DataImport[]
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model BusinessMember {
+  id         String   @id @default(uuid())
+  userId     String
+  businessId String
+  role       BusinessRole
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, businessId])
+  @@index([businessId])
+}
+
+model DataImport {
+  id             String       @id @default(uuid())
+  businessId     String
+  fileName       String
+  fileType       ImportFileType
+  status         ImportStatus
+
+  totalRows      Int          @default(0)
+  validRows      Int          @default(0)
+  invalidRows    Int          @default(0)
+  duplicateRows  Int          @default(0)
+
+  errorReport    Json?
+
+  business       Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime     @default(now())
+  completedAt    DateTime?
+
+  @@index([businessId])
+  @@index([businessId, createdAt])
+}
+
+model Customer {
+  id           String   @id @default(uuid())
+  businessId   String
+
+  externalId   String?
+  name         String
+  email        String?
+  phone        String?
+  city         String?
+  state        String?
+
+  business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sales        Sale[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, email])
+  @@index([businessId, phone])
+}
+
+model Category {
+  id          String    @id @default(uuid())
+  businessId  String
+  name        String
+
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products    Product[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+model Product {
+  id           String      @id @default(uuid())
+  businessId   String
+  categoryId   String?
+
+  externalId   String?
+  name         String
+  sku          String?
+  costPrice    Decimal     @db.Decimal(12, 2)
+  sellingPrice Decimal     @db.Decimal(12, 2)
+  isActive     Boolean     @default(true)
+
+  business     Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category     Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  saleItems    SaleItem[]
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, categoryId])
+  @@index([businessId, sku])
+}
+
+model Sale {
+  id            String        @id @default(uuid())
+  businessId    String
+  customerId    String?
+
+  saleDate      DateTime
+  status        SaleStatus    @default(COMPLETED)
+
+  subtotal      Decimal       @db.Decimal(12, 2)
+  discount      Decimal       @default(0) @db.Decimal(12, 2)
+  tax           Decimal       @default(0) @db.Decimal(12, 2)
+  totalAmount   Decimal       @db.Decimal(12, 2)
+
+  paymentMethod PaymentMethod?
+
+  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer      Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items         SaleItem[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, saleDate])
+  @@index([businessId, customerId])
+  @@index([businessId, status])
+}
+
+model SaleItem {
+  id          String    @id @default(uuid())
+  saleId      String
+  productId   String
+
+  quantity    Int
+  unitPrice   Decimal   @db.Decimal(12, 2)
+  unitCost    Decimal   @db.Decimal(12, 2)
+  discount    Decimal   @default(0) @db.Decimal(12, 2)
+  totalAmount Decimal   @db.Decimal(12, 2)
+
+  sale        Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  createdAt   DateTime  @default(now())
+
+  @@index([saleId])
+  @@index([productId])
+}
+
+model Expense {
+  id          String    @id @default(uuid())
+  businessId  String
+
+  category    String
+  amount      Decimal   @db.Decimal(12, 2)
+  expenseDate DateTime
+  description String?
+
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, expenseDate])
+  @@index([businessId, category])
+}
